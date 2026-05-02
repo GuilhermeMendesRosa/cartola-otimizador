@@ -23,21 +23,16 @@ def cli():
 
 
 @cli.command()
-@click.option(
-    "--rodadas",
-    "-r",
-    default=None,
-    type=int,
-    help="Número de rodadas históricas para coletar. Se omitido, coleta apenas a atual.",
-)
-def collect(rodadas):
-    """Coleta dados do Cartola e salva localmente."""
+def collect():
+    """Coleta TODAS as rodadas do Cartola e salva localmente."""
     click.echo("Coletando dados do Cartola FC...")
 
-    if rodadas:
-        click.echo(f"Buscando dados históricos (últimas {rodadas} rodadas)...")
-        n = collect_historical(from_round=1)
-        click.echo(f"✓ {n} novas rodadas coletadas.")
+    status = get_mercado_status()
+    rodada_atual = status.rodada_atual
+
+    click.echo(f"Atualizando rodadas 1 a {rodada_atual - 1}...")
+    n = collect_historical(from_round=1, to_round=rodada_atual - 1)
+    click.echo(f"✓ {n} novas rodadas históricas coletadas.")
 
     data = collect_current_round()
     click.echo(f"✓ Rodada {data['rodada']} atual salva com {len(data['atletas'])} atletas.")
