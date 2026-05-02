@@ -1,0 +1,5 @@
+requests==2.32.3
+pandas==2.2.3
+pulp==2.9.0
+rich==13.9.4
+click==8.1.7
