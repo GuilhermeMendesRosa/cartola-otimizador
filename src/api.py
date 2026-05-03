@@ -56,6 +56,8 @@ class Partida:
     valida: bool
     aproveitamento_mandante: list[str]
     aproveitamento_visitante: list[str]
+    clube_casa_posicao: int | None = None
+    clube_visitante_posicao: int | None = None
 
 
 @dataclass
@@ -138,6 +140,8 @@ def get_partidas(rodada: Optional[int] = None) -> list[Partida]:
             valida=p["valida"],
             aproveitamento_mandante=p.get("aproveitamento_mandante", []),
             aproveitamento_visitante=p.get("aproveitamento_visitante", []),
+            clube_casa_posicao=p.get("clube_casa_posicao"),
+            clube_visitante_posicao=p.get("clube_visitante_posicao"),
         )
         for p in data.get("partidas", [])
     ]

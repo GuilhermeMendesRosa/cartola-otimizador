@@ -15,8 +15,8 @@ def compute_expected_scores(
     atletas: list[Atleta],
     partidas: list[Partida],
     recent_rounds: int = 5,
-    alpha: float = 0.40,
-    beta: float = 0.15,
+    alpha: float = 0.42,
+    beta: float = 0.18,
     gamma: float = 1.0,
     delta: float = 1.0,
     epsilon: float = 1.0,
@@ -25,6 +25,7 @@ def compute_expected_scores(
     atletas_df = _load_or_build_df(df)
     club_strength = _build_club_strength(atletas_df)
     home_map = _build_home_map(partidas)
+    pos_bonus = _build_position_bonus(partidas)
     scores: dict[int, float] = {}
     historical = _get_historical_by_atleta(atletas_df, recent_rounds * 2)
 
@@ -64,11 +65,13 @@ def compute_expected_scores(
                 atleta, partidas, club_strength, home_map
             )
 
-        expected = base + gamma * momentum + delta * home_factor + epsilon * opponent_factor
+        table_pos_bonus = pos_bonus.get(atleta.clube_id, 0.0)
+
+        expected = base + gamma * momentum + delta * home_factor + epsilon * opponent_factor + 0.3 * table_pos_bonus
         expected = max(expected, 0.0)
 
         if atleta.media > 0 and atleta.jogos > 0:
-            expected = 0.65 * expected + 0.35 * atleta.media
+            expected = 0.85 * expected + 0.15 * atleta.media
 
         scores[atleta.atleta_id] = round(expected, 2)
 
@@ -134,6 +137,17 @@ def _build_home_map(partidas: list[Partida]) -> dict[int, bool]:
             home_map[p.clube_casa_id] = True
             home_map[p.clube_visitante_id] = False
     return home_map
+
+
+def _build_position_bonus(partidas: list[Partida]) -> dict[int, float]:
+    pos_map: dict[int, float] = {}
+    for p in partidas:
+        if p.valida:
+            if p.clube_casa_posicao:
+                pos_map[p.clube_casa_id] = (10.5 - p.clube_casa_posicao) / 6.0
+            if p.clube_visitante_posicao:
+                pos_map[p.clube_visitante_id] = (10.5 - p.clube_visitante_posicao) / 6.0
+    return pos_map
 
 
 def _compute_opponent_factor(

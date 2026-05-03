@@ -15,6 +15,7 @@ from .data_collector import (
 from .predictor import compute_expected_scores
 from .optimizer import optimize_lineup
 from .formatter import print_lineup, print_status
+from .backtest import run_backtest, print_backtest_results, run_multi_experiment_backtest, print_multi_experiment_results
 
 
 @click.group()
@@ -96,6 +97,24 @@ def status():
     """Exibe o status atual do mercado."""
     s = get_mercado_status()
     print_status(s)
+
+
+@cli.command()
+@click.option("--cartoletas", "-c", default=130.0, type=float, help="Cartoletas para simulação.")
+@click.option("--formacao", "-f", default="4-3-3", type=click.Choice(list(FORMATION_LAYOUT.keys())), help="Formação.")
+def backtest(cartoletas, formacao):
+    """Backtest: testa as predições contra resultados reais de rodadas passadas."""
+    results, aggregated = run_backtest(cartoletas=cartoletas, formacao=formacao)
+    print_backtest_results(results, aggregated)
+
+
+@cli.command()
+@click.option("--cartoletas", "-c", default=130.0, type=float, help="Cartoletas para simulação.")
+@click.option("--formacao", "-f", default="4-3-3", type=click.Choice(list(FORMATION_LAYOUT.keys())), help="Formação.")
+def experiment(cartoletas, formacao):
+    """Compara múltiplas configurações do preditor via backtest."""
+    results = run_multi_experiment_backtest(cartoletas=cartoletas, formacao=formacao)
+    print_multi_experiment_results(results, cartoletas)
 
 
 def main():
