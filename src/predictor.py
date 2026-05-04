@@ -9,6 +9,7 @@ FORBIDDEN_STATUSES = {2, 3, 6, 8, 9, 10, 13}
 
 HOME_BONUS = 1.2
 AWAY_PENALTY = -0.5
+CONSERVATIVE_FACTOR = 0.85
 
 
 def compute_expected_scores(
@@ -20,6 +21,7 @@ def compute_expected_scores(
     gamma: float = 1.0,
     delta: float = 1.0,
     epsilon: float = 1.0,
+    conservative: bool = False,
     df: pd.DataFrame | None = None,
 ) -> dict[int, float]:
     atletas_df = _load_or_build_df(df)
@@ -72,6 +74,10 @@ def compute_expected_scores(
 
         if atleta.media > 0 and atleta.jogos > 0:
             expected = 0.85 * expected + 0.15 * atleta.media
+
+        if conservative:
+            expected = expected * CONSERVATIVE_FACTOR - _risk_penalty(atleta)
+            expected = max(expected, 0.0)
 
         scores[atleta.atleta_id] = round(expected, 2)
 
@@ -188,3 +194,20 @@ def _compute_opponent_factor(
         opp_z *= -0.5
 
     return round(np.clip(opp_z * 1.5, -2.0, 2.0), 2)
+
+
+def _risk_penalty(atleta: Atleta) -> float:
+    penalty = 0.0
+
+    if atleta.status_id != 7:
+        penalty += 0.75
+
+    if atleta.jogos <= 2:
+        penalty += 0.60
+    elif atleta.jogos <= 5:
+        penalty += 0.30
+
+    if atleta.media == 0 and atleta.jogos > 0:
+        penalty += 0.30
+
+    return penalty

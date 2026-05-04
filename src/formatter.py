@@ -50,6 +50,10 @@ def print_lineup(lineup: OptimizedLineup) -> None:
     summary.append("  │  ", style="bright_black")
     summary.append(f"Projeção: ", style="bright_black")
     summary.append(f"{esperado:.1f} pts", style="bold magenta")
+    if lineup.com_banco:
+        summary.append("  │  ", style="bright_black")
+        summary.append("Proteção banco: ", style="bright_black")
+        summary.append(f"+{lineup.protecao_banco:.1f}", style="bold cyan")
     summary.append("  │  ", style="bright_black")
     summary.append(f"Saldo: ", style="bright_black")
     summary.append(f"C$ {saldo:.2f}", style="yellow")
@@ -70,7 +74,7 @@ def print_lineup(lineup: OptimizedLineup) -> None:
         res_table.add_column("Preço", justify="right", style="dim green", width=10)
         res_table.add_column("Projeção", justify="right", style="dim magenta", width=10)
 
-        for p in sorted(lineup.reservas, key=lambda x: x.posicao):
+        for p in sorted(lineup.reservas, key=lambda x: _reserve_order(x.posicao)):
             label = POS_LABEL_PT.get(p.posicao, p.posicao)
             res_table.add_row(
                 label, f"{p.nome} ({p.clube})",
@@ -103,3 +107,13 @@ def print_status(status) -> None:
     table.add_row("Times escalados", f"{status.times_escalados:,}")
     table.add_row("Game over", "Sim" if status.game_over else "Não")
     console.print(table)
+
+
+def _reserve_order(posicao: str) -> int:
+    return {
+        "goleiro": 0,
+        "zagueiro": 1,
+        "lateral": 2,
+        "meia": 3,
+        "atacante": 4,
+    }.get(posicao, 9)

@@ -46,6 +46,8 @@ class OptimizedLineup:
     pontuacao_esperada: float
     titulares: list[SelectedPlayer]
     reservas: list[SelectedPlayer]
+    protecao_banco: float = 0.0
+    com_banco: bool = False
     status: str = "optimal"
 
     @property
@@ -66,6 +68,8 @@ def optimize_lineup(
     forced_ids: Optional[list[int]] = None,
     banned_ids: Optional[list[int]] = None,
     max_por_clube: int = 4,
+    with_bench: bool = False,
+    reserve_weight: float = 0.30,
 ) -> Optional[OptimizedLineup]:
     forced_ids = forced_ids or []
     banned_ids = banned_ids or []
@@ -75,65 +79,86 @@ def optimize_lineup(
 
     layout = FORMATION_LAYOUT[formacao]
 
-    by_pos = _group_by_position(atletas)
-
     problem = LpProblem("Cartola_Lineup", LpMaximize)
-    x = {}
+    starters = {}
+    reserves = {}
     score_terms = []
 
     for atleta in atletas:
         aid = atleta.atleta_id
         score = expected_scores.get(aid, atleta.media)
-
-        if aid in forced_ids:
-            x[aid] = 1
-            score_terms.append(score * 1)
-            continue
-
         if aid in banned_ids:
-            x[aid] = 0
             continue
 
         if score <= 0:
             continue
 
-        var = LpVariable(f"x_{aid}", cat="Binary")
-        x[aid] = var
-        score_terms.append(score * var)
+        starter_var = LpVariable(f"starter_{aid}", cat="Binary")
+        starters[aid] = starter_var
+        score_terms.append(score * starter_var)
+
+        if with_bench and atleta.posicao != "tecnico":
+            reserve_var = LpVariable(f"reserve_{aid}", cat="Binary")
+            reserves[aid] = reserve_var
+            score_terms.append(score * reserve_weight * reserve_var)
 
     problem += lpSum(score_terms)
 
     for fb_id in forced_ids:
-        if isinstance(x.get(fb_id), LpVariable):
-            problem += x[fb_id] == 1
+        if fb_id in starters:
+            problem += starters[fb_id] == 1
 
-    for ban_id in banned_ids:
-        if isinstance(x.get(ban_id), LpVariable):
-            problem += x[ban_id] == 0
-
-    variables = {aid: v for aid, v in x.items() if isinstance(v, LpVariable)}
-    if not variables:
+    if not starters:
         return None
 
     problem += lpSum(
-        float(_lookup_preco(atletas, aid)) * v for aid, v in variables.items()
+        float(_lookup_preco(atletas, aid)) * starter_var
+        for aid, starter_var in starters.items()
+    ) + lpSum(
+        float(_lookup_preco(atletas, aid)) * reserve_var
+        for aid, reserve_var in reserves.items()
     ) <= cartoletas
 
     for pos_name, count in layout.items():
-        pos_ids = _filter_position(variables, atletas, pos_name)
+        pos_ids = _filter_position(starters, atletas, pos_name)
         if pos_ids:
-            problem += lpSum(variables[aid] for aid in pos_ids) == count
+            problem += lpSum(starters[aid] for aid in pos_ids) == count
 
-    goleiro_ids = _filter_position(variables, atletas, "goleiro")
+    goleiro_ids = _filter_position(starters, atletas, "goleiro")
     if goleiro_ids:
-        problem += lpSum(variables[aid] for aid in goleiro_ids) == 1
+        problem += lpSum(starters[aid] for aid in goleiro_ids) == 1
 
-    tecnico_ids = _filter_position(variables, atletas, "tecnico")
+    tecnico_ids = _filter_position(starters, atletas, "tecnico")
     if tecnico_ids:
-        problem += lpSum(variables[aid] for aid in tecnico_ids) == 1
+        problem += lpSum(starters[aid] for aid in tecnico_ids) == 1
+
+    if with_bench:
+        reserve_layout = {
+            "goleiro": 1,
+            "zagueiro": 1,
+            "lateral": 1,
+            "meia": 1,
+            "atacante": 1,
+        }
+        for pos_name, count in reserve_layout.items():
+            pos_ids = _filter_position(reserves, atletas, pos_name)
+            if pos_ids:
+                problem += lpSum(reserves[aid] for aid in pos_ids) == count
+
+    for aid in starters:
+        if aid in reserves:
+            problem += starters[aid] + reserves[aid] <= 1
 
     for club_id in set(a.clube_id for a in atletas):
-        club_vars = [v for aid, v in variables.items() if _lookup_clube(atletas, aid) == club_id]
+        club_vars = [
+            starters[aid]
+            for aid in starters
+            if _lookup_clube(atletas, aid) == club_id
+        ] + [
+            reserves[aid]
+            for aid in reserves
+            if _lookup_clube(atletas, aid) == club_id
+        ]
         if club_vars:
             problem += lpSum(club_vars) <= max_por_clube
 
@@ -142,9 +167,35 @@ def optimize_lineup(
     if LpStatus[problem.status] != "Optimal":
         return None
 
-    selected = []
+    titulares = _build_selected_players(starters, atletas, clubes, expected_scores, titular=True)
+    reservas_list = _build_selected_players(reserves, atletas, clubes, expected_scores, titular=False)
+    custo = sum(p.preco for p in titulares) + sum(p.preco for p in reservas_list)
+    esperado = sum(p.expected for p in titulares)
+    protecao_banco = sum(p.expected for p in reservas_list) * reserve_weight
+
+    return OptimizedLineup(
+        formacao=formacao,
+        cartoletas_usadas=round(custo, 2),
+        cartoletas_disponiveis=round(cartoletas, 2),
+        pontuacao_esperada=round(esperado, 2),
+        titulares=sorted(titulares, key=lambda p: _pos_order(p.posicao)),
+        reservas=sorted(reservas_list, key=lambda p: _pos_order(p.posicao)),
+        protecao_banco=round(protecao_banco, 2),
+        com_banco=with_bench,
+        status="optimal_with_bench" if with_bench else "optimal",
+    )
+
+
+def _build_selected_players(
+    variables: dict[int, LpVariable],
+    atletas: list[Atleta],
+    clubes: dict,
+    expected_scores: dict[int, float],
+    titular: bool,
+) -> list[SelectedPlayer]:
+    selected: list[SelectedPlayer] = []
     for aid, var in variables.items():
-        if value(var) and value(var) > 0.5 or aid in forced_ids:
+        if value(var) and value(var) > 0.5:
             atleta = _find_atleta(atletas, aid)
             if not atleta:
                 continue
@@ -160,23 +211,10 @@ def optimize_lineup(
                     preco=atleta.preco,
                     media=atleta.media,
                     expected=expected_scores.get(aid, atleta.media),
-                    titular=True,
+                    titular=titular,
                 )
             )
-
-    titulares, reservas = _separate_starters(selected, layout, atletas)
-    custo = sum(p.preco for p in selected)
-    esperado = sum(p.expected for p in selected)
-
-    return OptimizedLineup(
-        formacao=formacao,
-        cartoletas_usadas=round(custo, 2),
-        cartoletas_disponiveis=round(cartoletas, 2),
-        pontuacao_esperada=round(esperado, 2),
-        titulares=sorted(titulares, key=lambda p: _pos_order(p.posicao)),
-        reservas=sorted(reservas, key=lambda p: _pos_order(p.posicao)),
-        status="optimal",
-    )
+    return selected
 
 
 def _group_by_position(atletas: list[Atleta]) -> dict[str, list[Atleta]]:

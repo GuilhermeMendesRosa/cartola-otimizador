@@ -52,7 +52,9 @@ def collect():
 @click.option("--incluir", "-i", multiple=True, type=str, help="Slug de atleta para forçar na escalação.")
 @click.option("--excluir", "-e", multiple=True, type=str, help="Slug de atleta para banir da escalação.")
 @click.option("--max-clube", "-m", default=4, type=int, help="Máximo de atletas do mesmo clube.")
-def scale(cartoletas, formacao, incluir, excluir, max_clube):
+@click.option("--conservador", is_flag=True, help="Reduz projeções otimistas e penaliza risco.")
+@click.option("--com-banco", is_flag=True, help="Otimiza titulares e reservas juntos.")
+def scale(cartoletas, formacao, incluir, excluir, max_clube, conservador, com_banco):
     """Encontra a melhor escalação com as cartoletas disponíveis."""
     click.echo("Carregando dados do Cartola...")
 
@@ -68,7 +70,7 @@ def scale(cartoletas, formacao, incluir, excluir, max_clube):
             banned_ids.append(a.atleta_id)
 
     click.echo(f"Calculando projeções para {len(atletas)} atletas...")
-    expected = compute_expected_scores(atletas, partidas)
+    expected = compute_expected_scores(atletas, partidas, conservative=conservador)
 
     click.echo(f"Otimizando escalação (formação {formacao}, C$ {cartoletas:.0f})...")
     lineup = optimize_lineup(
@@ -80,6 +82,7 @@ def scale(cartoletas, formacao, incluir, excluir, max_clube):
         forced_ids=forced_ids if forced_ids else None,
         banned_ids=banned_ids if banned_ids else None,
         max_por_clube=max_clube,
+        with_bench=com_banco,
     )
 
     if lineup is None:

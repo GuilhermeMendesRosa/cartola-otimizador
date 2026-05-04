@@ -20,11 +20,7 @@ python3 -m src.main collect
 ```
 
 Isso puxa os dados da rodada atual da API do Cartola (preços, médias, status dos atletas, partidas)
-e salva localmente. Na primeira vez, adicione um número de rodadas históricas:
-
-```bash
-python3 -m src.main collect --rodadas 10
-```
+e atualiza todas as rodadas disponíveis localmente.
 
 ### 2. (Opcional) Ver status do mercado
 
@@ -59,6 +55,8 @@ python3 -m src.main scale [OPÇÕES]
 | `-i, --incluir` | — | Slug de atleta obrigatório (pode repetir) |
 | `-e, --excluir` | — | Slug de atleta banido (pode repetir) |
 | `-m, --max-clube` | 4 | Máximo de atletas do mesmo clube |
+| `--conservador` | off | Reduz projeções infladas e penaliza risco |
+| `--com-banco` | off | Otimiza titulares e reservas juntos |
 
 **Exemplos:**
 
@@ -71,17 +69,22 @@ python3 -m src.main scale -c 105 -f 3-5-2 -i hulk -e gabigol
 
 # Time com no máximo 3 jogadores do mesmo clube
 python3 -m src.main scale -c 100 -f 4-4-2 -m 3
+
+# Modo conservador
+python3 -m src.main scale -c 115.94 -f 4-3-3 --conservador
+
+# Otimizar titulares e banco
+python3 -m src.main scale -c 115.94 -f 4-3-3 --com-banco
+
+# Conservador + banco
+python3 -m src.main scale -c 115.94 -f 4-3-3 --conservador --com-banco
 ```
 
 ### `collect` — Atualizar dados
 
 ```bash
-python3 -m src.main collect [OPÇÕES]
+python3 -m src.main collect
 ```
-
-| Opção | Descrição |
-|---|---|
-| `-r, --rodadas` | Número de rodadas históricas para baixar (só precisa na 1ª vez) |
 
 ### `status` — Status do mercado
 
@@ -95,17 +98,20 @@ python3 -m src.main status
 
 1. **Coleta** — Puxa dados da API oficial do Cartola (atletas, preços, médias, partidas)
 2. **Predição** — Calcula pontuação esperada de cada atleta considerando:
-   - Média ponderada das últimas rodadas (recentes pesam mais)
-   - Mediana (robusto a outliers)
-   - Momento/tendência (em alta ou baixa nas últimas rodadas)
-   - Jogo em casa (+1.2 pts) ou fora (-0.5 pts)
-   - Força do adversário (z-score por clube e posição)
+    - Média ponderada das últimas rodadas (recentes pesam mais)
+    - Mediana (robusto a outliers)
+    - Momento/tendência (em alta ou baixa nas últimas rodadas)
+    - Jogo em casa (+1.2 pts) ou fora (-0.5 pts)
+    - Força do adversário (z-score por clube e posição)
+    - Bônus leve por posição na tabela
+    - Modo conservador opcional para reduzir viés otimista
 3. **Otimização** — Resolve um problema de programação linear inteira (ILP) que maximiza
-   a pontuação esperada respeitando:
-   - Orçamento de cartoletas
-   - Quantidade de jogadores por posição (formação)
-   - Limite de atletas por clube
-   - Exclusão de lesionados/suspensos
+    a pontuação esperada respeitando:
+    - Orçamento de cartoletas
+    - Quantidade de jogadores por posição (formação)
+    - Limite de atletas por clube
+    - Exclusão de lesionados/suspensos
+    - Banco de reservas opcional (1 goleiro, 1 defesa, 1 meia, 1 atacante)
 
 ## Estrutura do projeto
 
